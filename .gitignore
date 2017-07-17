@@ -1,4 +1,3 @@
-
 # Created by https://www.gitignore.io/api/node
 
 ### Node ###
@@ -49,4 +48,3 @@ jspm_packages
 
 .credentials
 .jshintrc
-config/apiInfo.json

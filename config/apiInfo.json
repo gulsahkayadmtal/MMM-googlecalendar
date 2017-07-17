@@ -1,0 +1,5 @@
+{
+    "client_id": "APP_CLIENT_ID",
+    "client_secret": "APP_CLIENT_SECRET",
+    "redirect_uri": "PROJECT_REDIRECT_URI"
+}
