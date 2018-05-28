@@ -6,17 +6,19 @@
  *
  * By Luís Gomes
  * MIT Licensed.
+ *
+ * Updated by @asbjorn
+ * - rewrote to follow the nodejs samples from Google Calendar API
  */
 
 var moment = require('moment'),
     fs = require('fs'),
     readline = require('readline'),
-    google = require('googleapis'),
-    googleAuth = require('google-auth-library');
+    {google} = require('googleapis');
 
-var GOOGLE_API_CONFIG_PATH = __dirname + '/config/apiInfo.json',
-    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'],
+var SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'],
     TOKEN_DIR = __dirname + '/.credentials/',
+    GOOGLE_API_CONFIG_PATH = TOKEN_DIR + 'client_secret.json',
     TOKEN_PATH = TOKEN_DIR + 'calendar-credentials.json';
 
 var CalendarFetcher = function(calendarName, reloadInterval, maximumEntries, maximumNumberOfDays) {
@@ -33,18 +35,19 @@ var CalendarFetcher = function(calendarName, reloadInterval, maximumEntries, max
      * Initiates calendar fetch.
      */
     var fetchCalendar = function(){
-        
-        fs.readFile(GOOGLE_API_CONFIG_PATH, function processClientSecrets(err, content) {
-            if (err) {
-                console.log('Error loading client secret file: ' + err);
-                return;
-            }
-            // Authorize a client with the loaded credentials, then call the
-            // Google Calendar API.
+        console.log("Fetching calendar events..");
+
+        // Load client secrets from a local file.
+        try {
+            //const content = fs.readFileSync(TOKEN_PATH);
+            const content = fs.readFileSync(GOOGLE_API_CONFIG_PATH);
             authorize(JSON.parse(content), listEvents);
-        });
+        } catch (err) {
+            console.log('Error loading client secret file:', err);
+            return;
+        }
     };
-    
+
 
     /* scheduleTimer()
      * Schedule the timer for the next update.
@@ -74,7 +77,7 @@ var CalendarFetcher = function(calendarName, reloadInterval, maximumEntries, max
 
         if (end - start === 24 * 60 * 60 * 1000 && startDate.getHours() === 0 && startDate.getMinutes() === 0) {
             // Is 24 hours, and starts on the middle of the night.
-            return true;            
+            return true;
         }
 
         return false;
@@ -88,108 +91,149 @@ var CalendarFetcher = function(calendarName, reloadInterval, maximumEntries, max
      * @param {function} callback The callback to call with the authorized client.
      */
     var authorize = function(credentials, callback) {
+        const {client_secret, client_id, redirect_uris} = credentials.installed;
+        let token = {};
+        // console.log("MMM-googlecalendar: ", credentials);
+        // console.log("MMM-googlecalendar: ", client_secret, client_id, redirect_uris);
 
-        var clientID = credentials.client_id,
-            clientSecret = credentials.client_secret,
-            redirectUrl = credentials.redirect_uri;
+        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
-        var auth = new googleAuth();
+        // Check if we have previously stored a token.
+        try {
+            token = fs.readFileSync(TOKEN_PATH);
+          } catch (err) {
+            return getNewToken(oAuth2Client, callback);
+          }
+          oAuth2Client.setCredentials(JSON.parse(token));
+          callback(oAuth2Client);
+    };
 
-        var oauth2Client = new auth.OAuth2(clientID, clientSecret, redirectUrl);
+    /**
+     * Create and returns a Promise object that retrieves, filters and properly
+     * packs the Google Calendar events.
+     *
+     * @param {integer} calendar_id ID of the google calendar to retrieve
+     * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
+     */
+    var createCalendarPromise = function(calendar_id, auth) {
+        const calendar = google.calendar({version: 'v3', auth});
+        console.log("Calendar ID: " + calendar_id);
 
-        // Check if already have calendar credentials
-        fs.readFile(TOKEN_PATH, (err, tokens) => {
+        return new Promise(function cb(resolve, reject) {
+            calendar.events.list({
+                calendarId: calendar_id,
+                timeMin: (new Date()).toISOString(),
+                maxResults: maximumEntries,
+                singleEvents: true,
+                orderBy: 'startTime',
+            }, (err, {data}) => {
+                // Error handling
+                if (err) {
+                    fetchFailedCallback(self, err);
+                    scheduleTimer();
+                    console.log('The API returned an error: ' + err);
+                    return;
+                }
 
-            if(err)
-                getNewToken(oauth2Client, callback);
-            else{
-                oauth2Client.credentials = JSON.parse(tokens);
-                callback(oauth2Client);
-            } 
+                let calendar_events = data.items;
+                if (calendar_events.length) {
+                    calendar_events.map((event, i) => {
+                        let start = event.start.dateTime || event.start.date;
+                        let today = moment().startOf('day').toDate();
+                        let future = moment().startOf('day').add(maximumNumberOfDays, 'days').subtract(1,'seconds').toDate(); // Subtract 1 second so that events that start on the middle of the night will not repeat.
+                        let skip_me = false;
+
+                        let title = '';
+                        let fullDayEvent = false;
+                        let startDate = undefined;
+                        let endDate = undefined;
+
+                        // console.log("event.kind: " + event.kind);
+                        if (event.kind === 'calendar#event') {
+                            startDate = moment(new Date(event.start.dateTime || event.start.date));
+                            endDate = moment(new Date(event.end.dateTime || event.end.date));
+
+                            if (event.start.length === 8) {
+                                startDate = startDate.startOf('day');
+                            }
+
+                            title = event.summary || event.description || 'Event';
+                            fullDayEvent = isFullDayEvent(event);
+                            if (!fullDayEvent && endDate < new Date()) {
+                                console.log("It's not a fullday event, and it is in the past. So skip: " + title);
+                                skip_me = true;
+                            }
+                            if (fullDayEvent && endDate <= today) {
+                                console.log("It's a fullday event, and it is before today. So skip: " + title);
+                                skip_me = true;
+                            }
+
+                            if (startDate > future) {
+                                console.log("It exceeds the maximumNumberOfDays limit. So skip: " + title);
+                                skip_me = true;
+                            }
+                        } else {
+                            console.log("Other kind of event: ", event);
+                        }
+
+                        if (!skip_me) {
+                            // Every thing is good. Add it to the list.
+                            console.log("Adding: " + title);
+                            events.push({
+                                title: title,
+                                startDate: startDate.format('x'),
+                                endDate: endDate.format('x'),
+                                fullDayEvent: fullDayEvent
+                            });
+                        }
+                    });
+                } else {
+                    console.log('No upcoming events found.');
+                }
+                console.log("Resolve / good()");
+                resolve();
+            });
         });
     };
 
     /**
-     * Lists the next 10 events on the user's primary calendar.
+     * Loops over a set of configurable calendarId's and fetch the events.
      *
      * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
      */
     var listEvents = function(auth) {
+        let calendar_ids = [
+            'webstep.no_i8smtpm3bbodi61t6ht5qvbthk@group.calendar.google.com',
+            'webstep.no_kh3h3l3uhv7pd0slgealv8pgj8@group.calendar.google.com']
 
-        var calendar = google.calendar('v3');
+        let promises = [];
+        for (let i=0; i<calendar_ids.length; i++) {
+            promises.push(createCalendarPromise(calendar_ids[i], auth));
+        }
 
-        calendar.events.list({
-            auth: auth,
-            calendarId: 'primary',
-            timeMin: (new Date()).toISOString(),
-            maxResults: maximumEntries,
-            singleEvents: true,
-            orderBy: 'startTime'
-        }, function(err, response) {
-            if (err) {
-                fetchFailedCallback(self, err);
-                scheduleTimer();
-                console.log('The API returned an error: ' + err);
-                return;
-            }
+        // Will only run after all Promises are complete
+        Promise.all(promises).then(function(results) {
+            let newEvents = events;
+            // Just for console debugging
+            newEvents.map((event, i) => {
+                let start = event.startDate;
+                console.log(`#${i}: ${start} - ${event.summary}`);
+            });
 
-            var newEvents = [];
+            // Sort the combination of events from all calendars
+            newEvents.sort(function(a, b) {
+                return a.startDate - b.startDate;
+            });
 
-            var receivedEvents = response.items;
-            if (receivedEvents.length == 0) {
-                console.log('No upcoming events found.');
-            } else {
-                for (var i = 0; i < receivedEvents.length; i++) {
+            // Update 'global' events array
+            events = newEvents.slice(0, maximumEntries);
 
-                    var event = receivedEvents[i];
-                    var today = moment().startOf('day').toDate();
-                    var future = moment().startOf('day').add(maximumNumberOfDays, 'days').subtract(1,'seconds').toDate(); // Subtract 1 second so that events that start on the middle of the night will not repeat.
-
-                    if(event.kind === 'calendar#event'){
-
-                        var startDate = moment(new Date(event.start.dateTime || event.start.date));
-                        var endDate = moment(new Date(event.end.dateTime || event.end.date));
-
-                        if (event.start.length === 8)
-                            startDate = startDate.startOf('day');
-
-                        var title = event.summary || event.description || 'Event';
-
-                        var fullDayEvent = isFullDayEvent(event);
-
-                        if (!fullDayEvent && endDate < new Date()) {
-                            //console.log("It's not a fullday event, and it is in the past. So skip: " + title);
-                            continue;
-                        }
-
-                        if (fullDayEvent && endDate <= today) {
-                            //console.log("It's a fullday event, and it is before today. So skip: " + title);
-                            continue;
-                        }
-
-                        if (startDate > future) {
-                            //console.log("It exceeds the maximumNumberOfDays limit. So skip: " + title);
-                            continue;
-                        }
-
-                        // Every thing is good. Add it to the list.                 
-                        newEvents.push({
-                            title: title,
-                            startDate: startDate.format('x'),
-                            endDate: endDate.format('x'),
-                            fullDayEvent: fullDayEvent
-                        });
-                    }
-                }
-                newEvents.sort(function(a, b) {
-                    return a.startDate - b.startDate;
-                });
-
-                events = newEvents.slice(0, maximumEntries);
-
-                self.broadcastEvents();
-                scheduleTimer();
-            }
+            // Broadcast event and setup re-occurring scheduler
+            self.broadcastEvents();
+        }, function(err) {
+            // Error handling goes here
+            console.log("Fucks sake mate - error from Promise!");
+            scheduleTimer();
         });
     };
 
@@ -219,31 +263,40 @@ var CalendarFetcher = function(calendarName, reloadInterval, maximumEntries, max
      *     client.
      */
     var getNewToken = function(oauth2Client, callback) {
-        var authUrl = oauth2Client.generateAuthUrl({
+        /* var authUrl = oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: SCOPES
-        });
+        }); */
+        console.log("Getting new token for MMM-googlecalendar");
 
+        const authUrl = oAuth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: SCOPES,
+        });
         console.log('Authorize this app by visiting this url:', authUrl);
-        var rl = readline.createInterface({
+
+        const rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout
         });
 
-        rl.question('Enter the code from that page here: ', function(code) {
+        rl.question('Enter the code from that page here: ', (code) => {
             rl.close();
-            oauth2Client.getToken(code, function(err, token) {
-                if (err) {
-                    console.log('Error while trying to retrieve access token', err);
-                    return;
+            oAuth2Client.getToken(code, (err, token) => {
+                if (err) return callback(err);
+                oAuth2Client.setCredentials(token);
+                // Store the token to disk for later program executions
+                try {
+                    fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
+                    console.log('Token stored to', TOKEN_PATH);
+                } catch (err) {
+                    console.error(err);
                 }
-                oauth2Client.setCredentials(token);
-                storeToken(token);
-                callback(oauth2Client);
+                callback(oAuth2Client);
             });
         });
     };
-    
+
     /* public methods */
 
     /* startFetch()
