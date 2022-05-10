@@ -1,5 +1,5 @@
 /*jshint node: true */
-'use strict';
+"use strict";
 
 /* global Module */
 
@@ -14,44 +14,43 @@
  * - Rewrote calendarfetcher to use more up2date javascript features
  */
 
-Module.register('MMM-googlecalendar',{
-
+Module.register("MMM-googlecalendar", {
     // Define module defaults
     defaults: {
-        calendarName: 'googlecalendar',
+        calendarName: "googlecalendar",
         // The unique calendarId's of the google calendar OR just 'primary' for the main calendar.
         // Supports multiple entries.
-        calendarIds: ['primary'],
+        calendarIds: ["primary"],
         maximumEntries: 10, // Total Maximum Entries
         maximumNumberOfDays: 365,
         displaySymbol: true,
-        defaultSymbol: 'calendar', // Fontawesome Symbol see http://fontawesome.io/cheatsheet/
+        defaultSymbol: "calendar", // Fontawesome Symbol see http://fontawesome.io/cheatsheet/
         displayRepeatingCountTitle: false,
-        defaultRepeatingCountTitle: '',
+        defaultRepeatingCountTitle: "",
         maxTitleLength: 25,
         fetchInterval: 5 * 60 * 1000, // Update every 5 minutes.
         animationSpeed: 2000,
         fade: true,
         fadePoint: 0.25, // Start on 1/4th of the list.
         urgency: 7,
-        timeFormat: 'relative',
+        timeFormat: "relative",
         titleReplace: {
-            'Birthday of ': 'Birthday'
-        }
+            "Birthday of ": "Birthday",
+        },
     },
 
     // Define required scripts.
-    getStyles: function() {
-        return ['googlecalendar.css', 'font-awesome.css'];
+    getStyles: function () {
+        return ["googlecalendar.css", "font-awesome.css"];
     },
 
     // Define required scripts.
-    getScripts: function() {
-        return ['moment.js'];
+    getScripts: function () {
+        return ["moment.js"];
     },
 
     // Define required translations.
-    getTranslations: function() {
+    getTranslations: function () {
         // The translations for the defaut modules are defined in the core translation files.
         // Therefor we can just return false. Otherwise we should have returned a dictionairy.
         // If you're trying to build your own module including translations, check out the documentation.
@@ -59,8 +58,8 @@ Module.register('MMM-googlecalendar',{
     },
 
     // Override start method.
-    start: function() {
-        Log.log('Starting module: ' + this.name);
+    start: function () {
+        Log.log("Starting module: " + this.name);
 
         // Set locale.
         moment.locale(config.language);
@@ -71,72 +70,82 @@ Module.register('MMM-googlecalendar',{
     },
 
     // Override socket notification handler.
-    socketNotificationReceived: function(notification, payload) {
-        if (notification === 'CALENDAR_EVENTS') {
-            Log.log("Received CALENDAR_EVENTS notification. Payload: ", payload);
+    socketNotificationReceived: function (notification, payload) {
+        if (notification === "CALENDAR_EVENTS") {
+            Log.log(
+                "Received CALENDAR_EVENTS notification. Payload: ",
+                payload
+            );
             if (this.hasCalendarName(payload.calendarName)) {
                 this.calendarData[payload.calendarName] = payload.events;
                 this.loaded = true;
             }
-        } else if (notification === 'FETCH_ERROR')
-            Log.error('Calendar Error. Could not fetch calendar: ' + payload.calendarName);
-        else if (notification === 'INCORRECT_URL')
-            Log.error('Calendar Error. Incorrect url: ' + payload.calendarName);
+        } else if (notification === "FETCH_ERROR")
+            Log.error(
+                "Calendar Error. Could not fetch calendar: " +
+                    payload.calendarName
+            );
+        else if (notification === "INCORRECT_URL")
+            Log.error("Calendar Error. Incorrect url: " + payload.calendarName);
         else
-            Log.log('Calendar received an unknown socket notification: ' + notification);
+            Log.log(
+                "Calendar received an unknown socket notification: " +
+                    notification
+            );
 
         this.updateDom(this.config.animationSpeed);
     },
 
     // Override dom generator.
-    getDom: function() {
-
+    getDom: function () {
         var events = this.createEventList();
-        var wrapper = document.createElement('table');
-        wrapper.className = 'large';
+        var wrapper = document.createElement("table");
+        wrapper.className = "large";
 
         if (events.length === 0) {
-            wrapper.innerHTML = (this.loaded) ? this.translate('EMPTY') : this.translate('LOADING');
-            wrapper.className = 'large dimmed';
+            wrapper.innerHTML = this.loaded
+                ? this.translate("EMPTY")
+                : this.translate("LOADING");
+            wrapper.className = "large dimmed";
             return wrapper;
         }
 
         for (var e in events) {
             var event = events[e];
 
-            var eventWrapper = document.createElement('tr');
-            eventWrapper.className = 'normal';
+            var eventWrapper = document.createElement("tr");
+            eventWrapper.className = "normal";
 
             if (this.config.displaySymbol) {
-                var symbolWrapper =  document.createElement('td');
-                symbolWrapper.className = 'symbol';
-                var symbol =  document.createElement('span');
-                symbol.className = 'fa fa-' + this.symbolForUrl(event.url);
+                var symbolWrapper = document.createElement("td");
+                symbolWrapper.className = "symbol";
+                var symbol = document.createElement("span");
+                symbol.className = "fa fa-" + this.symbolForUrl(event.url);
                 symbolWrapper.appendChild(symbol);
                 eventWrapper.appendChild(symbolWrapper);
             }
 
-            var titleWrapper = document.createElement('td'),
-                repeatingCountTitle = '';
-
+            var titleWrapper = document.createElement("td"),
+                repeatingCountTitle = "";
 
             if (this.config.displayRepeatingCountTitle) {
-
                 repeatingCountTitle = this.countTitleForUrl(event.url);
 
-                if(repeatingCountTitle !== '') {
+                if (repeatingCountTitle !== "") {
                     var thisYear = new Date().getFullYear(),
                         yearDiff = thisYear - event.firstYear;
 
-                    repeatingCountTitle = ', '+ yearDiff + '. ' + repeatingCountTitle;
+                    repeatingCountTitle =
+                        ", " + yearDiff + ". " + repeatingCountTitle;
                 }
             }
 
-            titleWrapper.innerHTML = this.titleTransform(event.title) + repeatingCountTitle;
-            titleWrapper.className = 'title bright';
+            titleWrapper.innerHTML =
+                this.titleTransform(event.title) + repeatingCountTitle;
+            titleWrapper.className = "title bright";
             eventWrapper.appendChild(titleWrapper);
 
-            var timeWrapper =  document.createElement('td');
+            var timeWrapper = document.createElement("td");
             //console.log(event.today);
             var now = new Date();
             // Define second, minute, hour, and day variables
@@ -146,9 +155,12 @@ Module.register('MMM-googlecalendar',{
             var one_day = one_hour * 24;
             if (event.fullDayEvent) {
                 if (event.today) {
-                    timeWrapper.innerHTML = this.translate('TODAY');
-                } else if (event.startDate - now < one_day && event.startDate - now > 0) {
-                    timeWrapper.innerHTML = this.translate('TOMORROW');
+                    timeWrapper.innerHTML = this.translate("TODAY");
+                } else if (
+                    event.startDate - now < one_day &&
+                    event.startDate - now > 0
+                ) {
+                    timeWrapper.innerHTML = this.translate("TOMORROW");
                 } else {
                     /* Check to see if the user displays absolute or relative dates with their events
                      * Also check to see if an event is happening within an 'urgency' time frameElement
@@ -157,15 +169,28 @@ Module.register('MMM-googlecalendar',{
                      *
                      * Note: this needs to be put in its own function, as the whole thing repeats again verbatim
                      */
-                    if (this.config.timeFormat === 'absolute') {
-                        if ((this.config.urgency > 1) && (event.startDate - now < (this.config.urgency * one_day))) {
+                    if (this.config.timeFormat === "absolute") {
+                        if (
+                            this.config.urgency > 1 &&
+                            event.startDate - now <
+                                this.config.urgency * one_day
+                        ) {
                             // This event falls within the config.urgency period that the user has set
-                            timeWrapper.innerHTML = moment(event.startDate, 'x').fromNow();
+                            timeWrapper.innerHTML = moment(
+                                event.startDate,
+                                "x"
+                            ).fromNow();
                         } else {
-                            timeWrapper.innerHTML = moment(event.startDate, 'x').format('MMM Do');
+                            timeWrapper.innerHTML = moment(
+                                event.startDate,
+                                "x"
+                            ).format("MMM Do");
                         }
                     } else {
-                        timeWrapper.innerHTML =  moment(event.startDate, 'x').fromNow();
+                        timeWrapper.innerHTML = moment(
+                            event.startDate,
+                            "x"
+                        ).fromNow();
                     }
                 }
             } else {
@@ -174,10 +199,16 @@ Module.register('MMM-googlecalendar',{
                         // This event is within the next 48 hours (2 days)
                         if (event.startDate - now < 6 * one_hour) {
                             // If event is within 6 hour, display 'in xxx' time format or moment.fromNow()
-                            timeWrapper.innerHTML = moment(event.startDate, 'x').fromNow();
+                            timeWrapper.innerHTML = moment(
+                                event.startDate,
+                                "x"
+                            ).fromNow();
                         } else {
                             // Otherwise just say 'Today/Tomorrow at such-n-such time'
-                            timeWrapper.innerHTML = moment(event.startDate, 'x').calendar();
+                            timeWrapper.innerHTML = moment(
+                                event.startDate,
+                                "x"
+                            ).calendar();
                         }
                     } else {
                         /* Check to see if the user displays absolute or relative dates with their events
@@ -187,24 +218,40 @@ Module.register('MMM-googlecalendar',{
                          *
                          * Note: this needs to be put in its own function, as the whole thing repeats again verbatim
                          */
-                        if (this.config.timeFormat === 'absolute') {
-                            if ((this.config.urgency > 1) && (event.startDate - now < (this.config.urgency * one_day))) {
+                        if (this.config.timeFormat === "absolute") {
+                            if (
+                                this.config.urgency > 1 &&
+                                event.startDate - now <
+                                    this.config.urgency * one_day
+                            ) {
                                 // This event falls within the config.urgency period that the user has set
-                                timeWrapper.innerHTML = moment(event.startDate, 'x').fromNow();
+                                timeWrapper.innerHTML = moment(
+                                    event.startDate,
+                                    "x"
+                                ).fromNow();
                             } else {
-                                timeWrapper.innerHTML = moment(event.startDate, 'x').format('MMM Do');
+                                timeWrapper.innerHTML = moment(
+                                    event.startDate,
+                                    "x"
+                                ).format("MMM Do");
                             }
                         } else {
-                            timeWrapper.innerHTML = moment(event.startDate, 'x').fromNow();
+                            timeWrapper.innerHTML = moment(
+                                event.startDate,
+                                "x"
+                            ).fromNow();
                         }
                     }
                 } else {
-                    timeWrapper.innerHTML =  this.translate('RUNNING') + ' ' + moment(event.endDate,'x').fromNow(true);
+                    timeWrapper.innerHTML =
+                        this.translate("RUNNING") +
+                        " " +
+                        moment(event.endDate, "x").fromNow(true);
                 }
             }
             //timeWrapper.innerHTML += ' - '+ moment(event.startDate,'x').format('lll');
             //console.log(event);
-            timeWrapper.className = 'time light';
+            timeWrapper.className = "time light";
             eventWrapper.appendChild(timeWrapper);
 
             wrapper.appendChild(eventWrapper);
@@ -218,7 +265,7 @@ Module.register('MMM-googlecalendar',{
                 var steps = events.length - startingPoint;
                 if (e >= startingPoint) {
                     var currentStep = e - startingPoint;
-                    eventWrapper.style.opacity = 1 - (1 / steps * currentStep);
+                    eventWrapper.style.opacity = 1 - (1 / steps) * currentStep;
                 }
             }
         }
@@ -231,9 +278,8 @@ Module.register('MMM-googlecalendar',{
      *
      * return bool - Has calendar name
      */
-    hasCalendarName: function() {
-        if(this.config.calendarName)
-            return true;
+    hasCalendarName: function () {
+        if (this.config.calendarName) return true;
 
         return false;
     },
@@ -243,22 +289,23 @@ Module.register('MMM-googlecalendar',{
      *
      * return array - Array with events.
      */
-    createEventList: function() {
+    createEventList: function () {
         var events = [];
-        var today = moment().startOf('day');
+        var today = moment().startOf("day");
 
         for (var c in this.calendarData) {
-
             var calendar = this.calendarData[c];
             for (var e in calendar) {
                 var event = calendar[e];
                 event.url = c;
-                event.today = event.startDate >= today && event.startDate < (today + 24 * 60 * 60 * 1000);
+                event.today =
+                    event.startDate >= today &&
+                    event.startDate < today + 24 * 60 * 60 * 1000;
                 events.push(event);
             }
         }
 
-        events.sort(function(a, b) {
+        events.sort(function (a, b) {
             return a.startDate - b.startDate;
         });
 
@@ -270,12 +317,12 @@ Module.register('MMM-googlecalendar',{
      *
      * argument url sting - Url to add.
      */
-    addCalendar: function(calendarName) {
-        this.sendSocketNotification('ADD_CALENDAR', {
+    addCalendar: function (calendarName) {
+        this.sendSocketNotification("ADD_CALENDAR", {
             calendarName: calendarName,
             maximumEntries: this.config.maximumEntries,
             maximumNumberOfDays: this.config.maximumNumberOfDays,
-            fetchInterval: this.config.fetchInterval
+            fetchInterval: this.config.fetchInterval,
         });
     },
 
@@ -286,10 +333,10 @@ Module.register('MMM-googlecalendar',{
      *
      * return string - The Symbol
      */
-    symbolForUrl: function(url) {
+    symbolForUrl: function (url) {
         for (var c in this.config.calendars) {
             var calendar = this.config.calendars[c];
-            if (calendar.url === url && typeof calendar.symbol === "string")  {
+            if (calendar.url === url && typeof calendar.symbol === "string") {
                 return calendar.symbol;
             }
         }
@@ -303,10 +350,13 @@ Module.register('MMM-googlecalendar',{
      *
      * return string - The Symbol
      */
-    countTitleForUrl: function(url) {
+    countTitleForUrl: function (url) {
         for (var c in this.config.calendars) {
             var calendar = this.config.calendars[c];
-            if (calendar.url === url && typeof calendar.repeatingCountTitle === "string")  {
+            if (
+                calendar.url === url &&
+                typeof calendar.repeatingCountTitle === "string"
+            ) {
                 return calendar.repeatingCountTitle;
             }
         }
@@ -323,9 +373,9 @@ Module.register('MMM-googlecalendar',{
      *
      * return string - The shortened string.
      */
-    shorten: function(string, maxLength) {
+    shorten: function (string, maxLength) {
         if (string.length > maxLength) {
-            return string.slice(0,maxLength) + "&hellip;";
+            return string.slice(0, maxLength) + "&hellip;";
         }
 
         return string;
@@ -340,7 +390,7 @@ Module.register('MMM-googlecalendar',{
      *
      * return string - The transformed title.
      */
-    titleTransform: function(title) {
+    titleTransform: function (title) {
         for (var needle in this.config.titleReplace) {
             var replacement = this.config.titleReplace[needle];
             title = title.replace(needle, replacement);
@@ -348,5 +398,5 @@ Module.register('MMM-googlecalendar',{
 
         title = this.shorten(title, this.config.maxTitleLength);
         return title;
-    }
+    },
 });
