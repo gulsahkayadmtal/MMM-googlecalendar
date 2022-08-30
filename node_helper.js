@@ -24,6 +24,7 @@ module.exports = NodeHelper.create({
         if (event === "ADD_CALENDAR")
             this.createFetcher(
                 payload.calendarName,
+                payload.calendarIds,
                 payload.fetchInterval,
                 payload.maximumEntries,
                 payload.maximumNumberOfDays
@@ -40,6 +41,7 @@ module.exports = NodeHelper.create({
 
     createFetcher: function (
         calendarName,
+        calendarIds,
         fetchInterval,
         maximumEntries,
         maximumNumberOfDays
@@ -48,6 +50,7 @@ module.exports = NodeHelper.create({
 
         var fetcher = new CalendarFetcher(
             calendarName,
+            calendarIds,
             fetchInterval,
             maximumEntries,
             maximumNumberOfDays

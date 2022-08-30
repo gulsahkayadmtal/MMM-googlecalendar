@@ -320,6 +320,7 @@ Module.register("MMM-googlecalendar", {
     addCalendar: function (calendarName) {
         this.sendSocketNotification("ADD_CALENDAR", {
             calendarName: calendarName,
+            calendarIds: this.config.calendarIds,
             maximumEntries: this.config.maximumEntries,
             maximumNumberOfDays: this.config.maximumNumberOfDays,
             fetchInterval: this.config.fetchInterval,

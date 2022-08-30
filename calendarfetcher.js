@@ -29,6 +29,7 @@ var SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"],
 
 var CalendarFetcher = function (
     calendarName,
+    calendarIds,
     reloadInterval,
     maximumEntries,
     maximumNumberOfDays
@@ -38,8 +39,8 @@ var CalendarFetcher = function (
     var reloadTimer = null;
     var events = [];
 
-    var fetchFailedCallback = function () {};
-    var eventsReceivedCallback = function () {};
+    var fetchFailedCallback = function () { };
+    var eventsReceivedCallback = function () { };
 
     /* fetchCalendar()
      * Initiates calendar fetch.
@@ -53,9 +54,9 @@ var CalendarFetcher = function (
         } catch (err) {
             console.log(
                 "Error loading client secret file! \nDid you download the '" +
-                    GOOGLE_API_CONFIG_PATH +
-                    "' file to access your Google Calendar? \nPath: " +
-                    GOOGLE_API_CONFIG_PATH
+                GOOGLE_API_CONFIG_PATH +
+                "' file to access your Google Calendar? \nPath: " +
+                GOOGLE_API_CONFIG_PATH
             );
             console.error(err);
             throw new Error("Error loading client secret file!");
@@ -106,15 +107,15 @@ var CalendarFetcher = function (
      * @param {function} callback The callback to call with the authorized client.
      */
     var authorize = async function (credentials, callback) {
-        const redirect_uri = credentials.installed.redirect_uris[0];
+        var redirect_uri = credentials.web.redirect_uris[0];
         if (!redirect_uri.includes(":3000")) {
             redirect_uri = redirect_uri + ":3000";
         }
 
         // Check if we have previously stored a token.
         let oAuth2Client = new OAuth2Client(
-            credentials.installed.client_id,
-            credentials.installed.client_secret,
+            credentials.web.client_id,
+            credentials.web.client_secret,
             redirect_uri
         );
         try {
@@ -140,11 +141,11 @@ var CalendarFetcher = function (
     function getAuthenticatedClient(credentials) {
         return new Promise((resolve, reject) => {
             const redirect_uri =
-                credentials.installed.redirect_uris[0] + ":3000";
+                credentials.web.redirect_uris[0] + ":3000";
 
             const oAuth2Client = new OAuth2Client(
-                credentials.installed.client_id,
-                credentials.installed.client_secret,
+                credentials.web.client_id,
+                credentials.web.client_secret,
                 redirect_uri
             );
 
@@ -196,107 +197,106 @@ var CalendarFetcher = function (
         const calendar = google.calendar({ version: "v3", auth });
         console.log("Calendar ID: " + calendar_id);
 
-        return new Promise(function cb(resolve, reject) {
-            calendar.events.list(
-                {
-                    calendarId: calendar_id,
-                    timeMin: new Date().toISOString(),
-                    maxResults: maximumEntries,
-                    singleEvents: true,
-                    orderBy: "startTime",
-                },
-                (err, { data }) => {
-                    // Error handling
-                    if (err) {
-                        fetchFailedCallback(self, err);
-                        scheduleTimer();
-                        console.log("The API returned an error: " + err);
-                        return;
+        return new Promise(async function cb(resolve, reject) {
+            try {
+                var res = await calendar.events.list(
+                    {
+                        calendarId: calendar_id,
+                        timeMin: new Date().toISOString(),
+                        maxResults: maximumEntries,
+                        singleEvents: true,
+                        orderBy: "startTime",
                     }
+                );
+                let calendar_events = res.data.items;
+                console.log('We have ' + calendar_events.length + ' events');
 
-                    let calendar_events = data.items;
-                    if (calendar_events.length) {
-                        calendar_events.map((event, i) => {
-                            let start =
-                                event.start.dateTime || event.start.date;
-                            let today = moment().startOf("day").toDate();
-                            let future = moment()
-                                .startOf("day")
-                                .add(maximumNumberOfDays, "days")
-                                .subtract(1, "seconds")
-                                .toDate(); // Subtract 1 second so that events that start on the middle of the night will not repeat.
-                            let skip_me = false;
+                if (calendar_events.length) {
+                    calendar_events.map((event, i) => {
+                        let start =
+                            event.start.dateTime || event.start.date;
+                        let today = moment().startOf("day").toDate();
+                        let future = moment()
+                            .startOf("day")
+                            .add(maximumNumberOfDays, "days")
+                            .subtract(1, "seconds")
+                            .toDate(); // Subtract 1 second so that events that start on the middle of the night will not repeat.
+                        let skip_me = false;
 
-                            let title = "";
-                            let fullDayEvent = false;
-                            let startDate = undefined;
-                            let endDate = undefined;
+                        let title = "";
+                        let fullDayEvent = false;
+                        let startDate = undefined;
+                        let endDate = undefined;
 
-                            // console.log("event.kind: " + event.kind);
-                            if (event.kind === "calendar#event") {
-                                startDate = moment(
-                                    new Date(
-                                        event.start.dateTime || event.start.date
-                                    )
-                                );
-                                endDate = moment(
-                                    new Date(
-                                        event.end.dateTime || event.end.date
-                                    )
-                                );
+                        // console.log("event.kind: " + event.kind);
+                        if (event.kind === "calendar#event") {
+                            startDate = moment(
+                                new Date(
+                                    event.start.dateTime || event.start.date
+                                )
+                            );
+                            endDate = moment(
+                                new Date(
+                                    event.end.dateTime || event.end.date
+                                )
+                            );
 
-                                if (event.start.length === 8) {
-                                    startDate = startDate.startOf("day");
-                                }
-
-                                title =
-                                    event.summary ||
-                                    event.description ||
-                                    "Event";
-                                fullDayEvent = isFullDayEvent(event);
-                                if (!fullDayEvent && endDate < new Date()) {
-                                    console.log(
-                                        "It's not a fullday event, and it is in the past. So skip: " +
-                                            title
-                                    );
-                                    skip_me = true;
-                                }
-                                if (fullDayEvent && endDate <= today) {
-                                    console.log(
-                                        "It's a fullday event, and it is before today. So skip: " +
-                                            title
-                                    );
-                                    skip_me = true;
-                                }
-
-                                if (startDate > future) {
-                                    console.log(
-                                        "It exceeds the maximumNumberOfDays limit. So skip: " +
-                                            title
-                                    );
-                                    skip_me = true;
-                                }
-                            } else {
-                                console.log("Other kind of event: ", event);
+                            if (event.start.length === 8) {
+                                startDate = startDate.startOf("day");
                             }
 
-                            if (!skip_me) {
-                                // Every thing is good. Add it to the list.
-                                console.log("Adding: " + title);
-                                events.push({
-                                    title: title,
-                                    startDate: startDate.format("x"),
-                                    endDate: endDate.format("x"),
-                                    fullDayEvent: fullDayEvent,
-                                });
+                            title =
+                                event.summary ||
+                                event.description ||
+                                "Event";
+                            fullDayEvent = isFullDayEvent(event);
+                            if (!fullDayEvent && endDate < new Date()) {
+                                console.log(
+                                    "It's not a fullday event, and it is in the past. So skip: " +
+                                    title
+                                );
+                                skip_me = true;
                             }
-                        });
-                    } else {
-                        console.log("No upcoming events found.");
-                    }
-                    resolve();
+                            if (fullDayEvent && endDate <= today) {
+                                console.log(
+                                    "It's a fullday event, and it is before today. So skip: " +
+                                    title
+                                );
+                                skip_me = true;
+                            }
+
+                            if (startDate > future) {
+                                console.log(
+                                    "It exceeds the maximumNumberOfDays limit. So skip: " +
+                                    title
+                                );
+                                skip_me = true;
+                            }
+                        } else {
+                            console.log("Other kind of event: ", event);
+                        }
+
+                        if (!skip_me) {
+                            // Every thing is good. Add it to the list.
+                            console.log("Adding: " + title);
+                            events.push({
+                                title: title,
+                                startDate: startDate.format("x"),
+                                endDate: endDate.format("x"),
+                                fullDayEvent: fullDayEvent,
+                            });
+                        }
+                    });
+                } else {
+                    console.log("No upcoming events found.");
                 }
-            );
+                resolve();
+            } catch (err) {
+                fetchFailedCallback(self, err);
+                scheduleTimer();
+                console.log("The API returned an error: " + err);
+                return;
+            }
         });
     };
 
@@ -306,10 +306,11 @@ var CalendarFetcher = function (
      * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
      */
     var listEvents = function (auth) {
-        let calendar_ids = [
-            "webstep.no_i8smtpm3bbodi61t6ht5qvbthk@group.calendar.google.com",
-            "webstep.no_kh3h3l3uhv7pd0slgealv8pgj8@group.calendar.google.com",
-        ];
+        let calendar_ids = calendarIds;
+        //[
+        // "webstep.no_i8smtpm3bbodi61t6ht5qvbthk@group.calendar.google.com",
+        // "webstep.no_kh3h3l3uhv7pd0slgealv8pgj8@group.calendar.google.com",
+        //];
 
         let promises = [];
         for (let i = 0; i < calendar_ids.length; i++) {
